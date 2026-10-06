@@ -46,7 +46,7 @@ import {
   selectRubbings,
   setRubbingSteleFilter,
 } from '@/stores/rubbingSlice';
-import { selectCompares, selectLosses } from '@/stores/lossSlice';
+import { selectCompares, selectEffectiveLosses, selectLosses } from '@/stores/lossSlice';
 import {
   STELE_FORM_COLOR,
   STELE_FORM_LABEL,
@@ -73,6 +73,7 @@ export default function SteleList() {
   const currentSteleId = useAppSelector((state) => state.stele.currentSteleId);
   const rubbings = useAppSelector(selectRubbings);
   const losses = useAppSelector(selectLosses);
+  const effectiveLosses = useAppSelector(selectEffectiveLosses);
   const compares = useAppSelector(selectCompares);
   const sealTable = useIdbTable<Seal>((database) => database.seals, { sortByUpdatedAt: false });
 
@@ -97,7 +98,7 @@ export default function SteleList() {
 
   const statOfStele = (
     steleId: string,
-  ): { rubbings: number; diff: number; loss: number; seal: number; conclusion: string } => {
+  ): { rubbings: number; diff: number; loss: number; rawLoss: number; seal: number; conclusion: string } => {
     const steleRubbings = rubbings.filter((rubbing) => rubbing.steleId === steleId);
     const rubbingIds = steleRubbings.map((rubbing) => rubbing.id);
     const steleCompares = compares.filter((compare) => compare.steleId === steleId);
@@ -105,7 +106,8 @@ export default function SteleList() {
     return {
       rubbings: steleRubbings.length,
       diff: steleCompares.reduce((sum, compare) => sum + compare.diffCount, 0),
-      loss: losses.filter((loss) => rubbingIds.includes(loss.rubbingId)).length,
+      loss: effectiveLosses.filter((item) => rubbingIds.includes(item.rubbingId)).length,
+      rawLoss: losses.filter((loss) => rubbingIds.includes(loss.rubbingId)).length,
       seal: sealTable.rows.filter((seal) => rubbingIds.includes(seal.rubbingId)).length,
       conclusion: lastCompare
         ? `${COMPARE_CONCLUSION_LABEL[lastCompare.conclusion]}（${lastCompare.date}）`
@@ -117,14 +119,15 @@ export default function SteleList() {
     () => ({
       steles: steles.length,
       rubbings: rubbings.length,
-      losses: losses.length,
+      losses: effectiveLosses.length,
+      rawLosses: losses.length,
       diff: compares.reduce((sum, compare) => sum + compare.diffCount, 0),
       catalogedPercent:
         rubbings.length === 0
           ? 0
           : Math.round((rubbings.filter((rubbing) => rubbing.state === 'cataloged').length / rubbings.length) * 100),
     }),
-    [compares, losses.length, rubbings, steles.length],
+    [compares, effectiveLosses.length, losses.length, rubbings, steles.length],
   );
 
   const openCreate = (): void => {
@@ -189,7 +192,8 @@ export default function SteleList() {
       <div className="gb-stat-row">
         <StatBadge label="碑刻总数" value={totals.steles} suffix="处" tone="primary" />
         <StatBadge label="拓本总数" value={totals.rubbings} suffix="份" tone="info" />
-        <StatBadge label="损泐字位" value={totals.losses} suffix="条" tone="warning" />
+        <StatBadge label="有效损泐字位" value={totals.losses} suffix="字" tone="warning" />
+        <StatBadge label="原始标注" value={totals.rawLosses} suffix="条" tone="info" />
         <StatBadge label="累计差异字数" value={totals.diff} suffix="字" tone="danger" />
         <StatBadge label="已编目占比" value={`${totals.catalogedPercent}%`} percent={totals.catalogedPercent} tone="success" />
       </div>
@@ -255,24 +259,25 @@ export default function SteleList() {
                       <Typography.Text type="secondary">所在地：{stele.location || '未记'}</Typography.Text>
                       <Typography.Text type="secondary">书者：{stele.calligrapher || '佚名'}</Typography.Text>
                       <Typography.Text>
-                        已收拓本 <strong>{stat.rubbings}</strong> 份 · 损泐字位 {stat.loss} 条
+                        已收拓本 <strong>{stat.rubbings}</strong> 份 · 有效损泐 {stat.loss} 字
+                        {stat.rawLoss > stat.loss ? `（原始标注 ${stat.rawLoss} 条）` : ''}
                       </Typography.Text>
                       <Typography.Text>
                         版本差异 <strong>{stat.diff}</strong> 字 · 钤印 {stat.seal} 方
                       </Typography.Text>
                       <Typography.Text type="secondary">最近断代：{stat.conclusion}</Typography.Text>
                       <Space size={4} wrap>
-                        {losses
-                          .filter((loss) => rubbings.some((rubbing) => rubbing.id === loss.rubbingId && rubbing.steleId === stele.id))
+                        {effectiveLosses
+                          .filter((item) => rubbings.some((rubbing) => rubbing.id === item.rubbingId && rubbing.steleId === stele.id))
                           .slice(0, 3)
-                          .map((loss) => (
+                          .map((item) => (
                             <LossTag
-                              key={loss.id}
-                              type={loss.type}
-                              severity={loss.severity}
-                              lineNo={loss.lineNo}
-                              charNo={loss.charNo}
-                              note={loss.note}
+                              key={item.key}
+                              type={item.representative.type}
+                              severity={item.representative.severity}
+                              lineNo={item.representative.lineNo}
+                              charNo={item.representative.charNo}
+                              note={item.representative.note}
                               size="small"
                             />
                           ))}

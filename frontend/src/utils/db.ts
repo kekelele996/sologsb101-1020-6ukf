@@ -201,9 +201,13 @@ export async function seedDatabase(): Promise<void> {
 
   const losses: Loss[] = [
     { id: 'loss_010101', rubbingId: 'rub_0101', lineNo: 3, charNo: 7, type: 'blur', severity: 'light', note: '「壽」字右下漫漶', createdAt: now - day * 30, updatedAt: now - day * 30 },
+    // 同字位补标：裂痕·轻（与漫漶·轻同程度，取先标注的漫漶为代表，本条作为补标保留）
+    { id: 'loss_010104', rubbingId: 'rub_0101', lineNo: 3, charNo: 7, type: 'crack', severity: 'light', note: '「壽」字旁细裂一道', createdAt: now - day * 29, updatedAt: now - day * 29 },
     { id: 'loss_010102', rubbingId: 'rub_0101', lineNo: 5, charNo: 2, type: 'stoneFlower', severity: 'medium', note: '石花漫及「年」字', createdAt: now - day * 30, updatedAt: now - day * 29 },
     { id: 'loss_010103', rubbingId: 'rub_0101', lineNo: 9, charNo: 11, type: 'missing', severity: 'heavy', note: '「禮」字缺末笔', createdAt: now - day * 28, updatedAt: now - day * 28 },
     { id: 'loss_010201', rubbingId: 'rub_0102', lineNo: 3, charNo: 7, type: 'blur', severity: 'medium', note: '晚拓，「壽」字已损', createdAt: now - day * 24, updatedAt: now - day * 24 },
+    // 同字位补标：石花·轻（漫漶·中更重，取漫漶为代表，本条作为补标保留）
+    { id: 'loss_010204', rubbingId: 'rub_0102', lineNo: 3, charNo: 7, type: 'stoneFlower', severity: 'light', note: '「壽」字旁石花', createdAt: now - day * 23, updatedAt: now - day * 23 },
     { id: 'loss_010202', rubbingId: 'rub_0102', lineNo: 9, charNo: 11, type: 'missing', severity: 'heavy', note: '「禮」字全缺', createdAt: now - day * 24, updatedAt: now - day * 22 },
     { id: 'loss_010203', rubbingId: 'rub_0102', lineNo: 12, charNo: 4, type: 'crack', severity: 'medium', note: '碑面斜裂一道', createdAt: now - day * 22, updatedAt: now - day * 22 },
     { id: 'loss_020101', rubbingId: 'rub_0201', lineNo: 2, charNo: 5, type: 'crack', severity: 'light', note: '崖面细裂', createdAt: now - day * 18, updatedAt: now - day * 18 },

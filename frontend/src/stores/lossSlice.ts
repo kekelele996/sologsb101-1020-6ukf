@@ -2,11 +2,11 @@
  * 损泐与比对 slice（Redux Toolkit）
  * 维护字位损泐集合、比对记录与比对 A/B 选择及筛选条件。
  */
-import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { createAsyncThunk, createSelector, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import { createId, db } from '@/utils/db';
 import type { Loss, LossDraft, LossSeverity, LossType } from '@/types/loss';
 import type { Compare, CompareDraft } from '@/types/compare';
-import { sortLosses } from '@/utils/collate';
+import { buildEffectiveLosses, sortLosses, type EffectiveLoss } from '@/utils/collate';
 import type { RootState } from './store';
 
 export interface LossFilters {
@@ -155,22 +155,60 @@ export const selectLossState = (state: RootState): LossState => state.loss;
 export const selectLosses = (state: RootState): Loss[] => state.loss.items;
 export const selectCompares = (state: RootState): Compare[] => state.loss.compares;
 
-/** 派生选择器：关键字 + 类型 + 程度筛选（全库维度） */
+/**
+ * 派生选择器：同一拓本同一字位的多条损泐折叠为一条「有效损泐」。
+ * 网格、统计、比对、导出统一读它；原始明细仍可通过 selectLosses 逐条查看。
+ */
+export const selectEffectiveLosses = createSelector(selectLosses, (items): EffectiveLoss[] =>
+  buildEffectiveLosses(items),
+);
+
+/** 某拓本的有效损泐（按字位）映射，供网格逐格取代表条目 */
+export const selectEffectiveLossMapByRubbing = createSelector(
+  selectEffectiveLosses,
+  (effective): Map<string, Map<string, EffectiveLoss>> => {
+    const result = new Map<string, Map<string, EffectiveLoss>>();
+    effective.forEach((item) => {
+      const coord = `${item.lineNo}:${item.charNo}`;
+      const inner = result.get(item.rubbingId) ?? new Map<string, EffectiveLoss>();
+      inner.set(coord, item);
+      result.set(item.rubbingId, inner);
+    });
+    return result;
+  },
+);
+
+/** 派生选择器：关键字 + 类型 + 程度筛选（作用于每字位代表条目，全库维度） */
 export function selectFilteredLosses(state: RootState): Loss[] {
-  const { items, filters } = state.loss;
+  const { filters } = state.loss;
   const keyword = filters.keyword.trim();
-  return items.filter((loss) => {
-    if (keyword.length > 0) {
-      const haystack = `${loss.lineNo}${loss.charNo}${loss.note}`;
-      if (!haystack.includes(keyword)) return false;
-    }
-    if (filters.types.length > 0 && !filters.types.includes(loss.type)) return false;
-    if (filters.severities.length > 0 && !filters.severities.includes(loss.severity)) return false;
-    return true;
-  });
+  return selectEffectiveLosses(state)
+    .filter((item) => {
+      const rep = item.representative;
+      if (keyword.length > 0) {
+        const haystack = `${rep.lineNo}${rep.charNo}${rep.note}`;
+        if (!haystack.includes(keyword)) return false;
+      }
+      if (filters.types.length > 0 && !filters.types.includes(rep.type)) return false;
+      if (filters.severities.length > 0 && !filters.severities.includes(rep.severity)) return false;
+      return true;
+    })
+    .map((item) => item.representative);
 }
 
-/** 某拓本在某碑刻下的损泐条数统计 */
+/** 某拓本有效损泐字数统计（同字位多条算一条；补标不重复计数） */
+export const selectEffectiveLossCountByRubbing = createSelector(
+  selectEffectiveLosses,
+  (effective): Record<string, number> => {
+    const result: Record<string, number> = {};
+    effective.forEach((item) => {
+      result[item.rubbingId] = (result[item.rubbingId] ?? 0) + 1;
+    });
+    return result;
+  },
+);
+
+/** 某拓本原始标注条数统计（含补标，供「另有几条」展示） */
 export function selectLossCountByRubbing(state: RootState): Record<string, number> {
   const result: Record<string, number> = {};
   state.loss.items.forEach((loss) => {

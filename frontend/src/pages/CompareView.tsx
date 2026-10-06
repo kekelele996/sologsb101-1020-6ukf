@@ -242,7 +242,7 @@ export default function CompareView() {
       <div className="gb-page-head">
         <div>
           <h2>同碑多版本比对与断代</h2>
-          <p>选定两个拓本，按字位坐标比对损泐集合并排展示差异，据差异推得早本 / 晚本 / 同版结论。</p>
+          <p>选定两个拓本，同一字位多条损泐按最重折叠为一条有效损泐后再按坐标比对，并排展示差异，据差异推得早本 / 晚本 / 同版结论。</p>
         </div>
         <Space wrap>
           <Select
@@ -303,7 +303,7 @@ export default function CompareView() {
             />
           </Space>
           <Typography.Text type="secondary">
-            A 损泐 {diff.result.totalA} 条 · B 损泐 {diff.result.totalB} 条
+            A 有效损泐 {diff.result.totalA} 字（原始 {diff.result.rawTotalA} 条，补标 {diff.result.extraTotalA} 条） · B 有效损泐 {diff.result.totalB} 字（原始 {diff.result.rawTotalB} 条，补标 {diff.result.extraTotalB} 条）
           </Typography.Text>
           <Button
             size="small"
@@ -352,7 +352,10 @@ export default function CompareView() {
                       </Space>
                       <div style={{ marginTop: 6 }}>
                         {row.lossA ? (
-                          <LossTag type={row.lossA.type} severity={row.lossA.severity} note={row.lossA.note} size="small" />
+                          <Space size={4} wrap>
+                            <LossTag type={row.lossA.type} severity={row.lossA.severity} note={row.lossA.note} size="small" />
+                            {row.extraA > 0 ? <Tag color="purple" style={{ marginInlineEnd: 0 }}>+{row.extraA} 补标</Tag> : null}
+                          </Space>
                         ) : (
                           <Typography.Text type="secondary">无损泐（字口完好）</Typography.Text>
                         )}
@@ -365,7 +368,10 @@ export default function CompareView() {
                       </Space>
                       <div style={{ marginTop: 6 }}>
                         {row.lossB ? (
-                          <LossTag type={row.lossB.type} severity={row.lossB.severity} note={row.lossB.note} size="small" />
+                          <Space size={4} wrap>
+                            <LossTag type={row.lossB.type} severity={row.lossB.severity} note={row.lossB.note} size="small" />
+                            {row.extraB > 0 ? <Tag color="purple" style={{ marginInlineEnd: 0 }}>+{row.extraB} 补标</Tag> : null}
+                          </Space>
                         ) : (
                           <Typography.Text type="secondary">无损泐（字口完好）</Typography.Text>
                         )}
@@ -384,7 +390,7 @@ export default function CompareView() {
             showIcon
             style={{ marginBottom: 14 }}
             message="断代规则"
-            description="A 相对 B 多出的损泐说明 A 拓制更晚、石面更损；据此推断早本 / 晚本，差异全为程度不同或方向相反时判为待考。"
+            description="同一字位的多条损泐先按最重折叠为一条有效损泐再比对；A 相对 B 多出的损泐说明 A 拓制更晚、石面更损，据此推断早本 / 晚本，差异全为程度不同或方向相反时判为待考。"
           />
           <Card className="gb-table-card" title="比对记录" styles={{ body: { padding: 0 } }}>
             {compares.length === 0 ? (

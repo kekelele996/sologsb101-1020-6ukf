@@ -33,7 +33,7 @@ import { useAppDispatch, useAppSelector } from '@/stores/store';
 import { loadAll } from '@/stores/store';
 import { selectSteles, setCurrentStele } from '@/stores/steleSlice';
 import { selectRubbings } from '@/stores/rubbingSlice';
-import { selectCompares, selectLosses } from '@/stores/lossSlice';
+import { selectCompares, selectEffectiveLosses, selectLosses } from '@/stores/lossSlice';
 import { SEAL_TYPE_COLOR, SEAL_TYPE_LABEL, sealPositionWeight, type Seal, type SealType } from '@/types/seal';
 import { RUBBING_METHOD_LABEL, RUBBING_STATE_LABEL } from '@/types/rubbing';
 import { COMPARE_CONCLUSION_COLOR, COMPARE_CONCLUSION_LABEL } from '@/types/compare';
@@ -65,6 +65,7 @@ export default function ExportView() {
   const steles = useAppSelector(selectSteles);
   const rubbings = useAppSelector(selectRubbings);
   const losses = useAppSelector(selectLosses);
+  const effectiveLosses = useAppSelector(selectEffectiveLosses);
   const compares = useAppSelector(selectCompares);
   const sealTable = useIdbTable<Seal>((database) => database.seals, { sortByUpdatedAt: false });
 
@@ -105,7 +106,8 @@ export default function ExportView() {
     () => ({
       steles: steles.length,
       rubbings: rubbings.length,
-      losses: losses.length,
+      losses: effectiveLosses.length,
+      rawLosses: losses.length,
       seals: sealTable.rows.length,
       compares: compares.length,
       passPercent:
@@ -113,7 +115,7 @@ export default function ExportView() {
           ? 0
           : Math.round((compares.filter((compare) => compare.conclusion !== 'pending').length / compares.length) * 100),
     }),
-    [compares, losses.length, rubbings.length, sealTable.rows.length, steles.length],
+    [compares, effectiveLosses.length, losses.length, rubbings.length, sealTable.rows.length, steles.length],
   );
 
   const handleExport = async (): Promise<void> => {
@@ -237,7 +239,8 @@ export default function ExportView() {
       <div className="gb-stat-row">
         <StatBadge label="碑刻" value={stat.steles} suffix="处" tone="primary" />
         <StatBadge label="拓本" value={stat.rubbings} suffix="份" tone="info" />
-        <StatBadge label="损泐字位" value={stat.losses} suffix="条" tone="warning" />
+        <StatBadge label="有效损泐字位" value={stat.losses} suffix="字" tone="warning" />
+        <StatBadge label="原始标注" value={stat.rawLosses} suffix="条" tone="info" />
         <StatBadge label="钤印" value={stat.seals} suffix="方" />
         <StatBadge label="比对记录" value={stat.compares} suffix="条" tone="danger" />
         <StatBadge label="已定断代占比" value={`${stat.passPercent}%`} percent={stat.passPercent} tone="success" />
@@ -391,16 +394,16 @@ export default function ExportView() {
                       <Tag>{RUBBING_METHOD_LABEL[rubbing.method]}</Tag>
                       <Tag color="gold">{RUBBING_STATE_LABEL[rubbing.state]}</Tag>
                       <Space size={4} wrap>
-                        {losses
-                          .filter((loss) => loss.rubbingId === rubbing.id)
+                        {effectiveLosses
+                          .filter((item) => item.rubbingId === rubbing.id)
                           .slice(0, 2)
-                          .map((loss) => (
+                          .map((item) => (
                             <LossTag
-                              key={loss.id}
-                              type={loss.type}
-                              severity={loss.severity}
-                              lineNo={loss.lineNo}
-                              charNo={loss.charNo}
+                              key={item.key}
+                              type={item.representative.type}
+                              severity={item.representative.severity}
+                              lineNo={item.representative.lineNo}
+                              charNo={item.representative.charNo}
                               size="small"
                             />
                           ))}

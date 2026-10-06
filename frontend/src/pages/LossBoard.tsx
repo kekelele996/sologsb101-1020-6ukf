@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   App as AntdApp,
+  Badge,
   Button,
   Card,
   Col,
@@ -20,6 +21,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -38,6 +40,7 @@ import {
   loadLosses,
   removeLoss,
   resetLossFilters,
+  selectEffectiveLossMapByRubbing,
   selectLosses,
   setLossKeyword,
   setLossSeverities,
@@ -57,7 +60,8 @@ import {
   type LossSeverity,
   type LossType,
 } from '@/types/loss';
-import { encodeCoord, groupByLine, maxCharNo, sortLosses } from '@/utils/collate';
+import { encodeCoord, groupByLine, maxCharNo } from '@/utils/collate';
+import type { EffectiveLoss } from '@/utils/collate';
 
 const FILTER_KEYS = ['type', 'severity'] as const;
 
@@ -69,6 +73,7 @@ export default function LossBoard() {
   const steles = useAppSelector(selectSteles);
   const rubbings = useAppSelector(selectRubbings);
   const losses = useAppSelector(selectLosses);
+  const effectiveMapByRubbing = useAppSelector(selectEffectiveLossMapByRubbing);
 
   const url = useFilterQuery(FILTER_KEYS);
   const [rubbingId, setRubbingId] = useState<string>('');
@@ -104,41 +109,50 @@ export default function LossBoard() {
     const keyword = url.keyword.trim();
     const types = url.values.type ?? [];
     const severities = url.values.severity ?? [];
-    return sortLosses(
-      losses.filter((loss) => {
-        if (loss.rubbingId !== rubbingId) return false;
+    const cellMap = effectiveMapByRubbing.get(rubbingId);
+    if (!cellMap) return [];
+    return Array.from(cellMap.values())
+      .filter((item) => {
+        const rep = item.representative;
         if (keyword.length > 0) {
-          const haystack = `${loss.lineNo}${loss.charNo}${loss.note}${encodeCoord(loss.lineNo, loss.charNo)}`;
+          const haystack = `${rep.lineNo}${rep.charNo}${rep.note}${encodeCoord(rep.lineNo, rep.charNo)}`;
           if (!haystack.includes(keyword)) return false;
         }
-        if (types.length > 0 && !types.includes(loss.type)) return false;
-        if (severities.length > 0 && !severities.includes(loss.severity)) return false;
+        if (types.length > 0 && !types.includes(rep.type)) return false;
+        if (severities.length > 0 && !severities.includes(rep.severity)) return false;
         return true;
-      }),
-    );
-  }, [losses, rubbingId, url.keyword, url.values]);
+      })
+      .sort((a, b) => (a.lineNo === b.lineNo ? a.charNo - b.charNo : a.lineNo - b.lineNo));
+  }, [effectiveMapByRubbing, rubbingId, url.keyword, url.values]);
+
+  const rawList = useMemo(
+    () => losses.filter((loss) => loss.rubbingId === rubbingId),
+    [losses, rubbingId],
+  );
 
   const stat = useMemo(() => {
-    const list = losses.filter((loss) => loss.rubbingId === rubbingId);
-    const count = (type: LossType): number => list.filter((loss) => loss.type === type).length;
+    const effective = Array.from(effectiveMapByRubbing.get(rubbingId)?.values() ?? []);
+    const reps = effective.map((item) => item.representative);
+    const count = (type: LossType): number => reps.filter((loss) => loss.type === type).length;
     return {
-      total: list.length,
-      lines: new Set(list.map((loss) => loss.lineNo)).size,
+      total: effective.length,
+      rawTotal: rawList.length,
+      extraTotal: effective.reduce((sum, item) => sum + item.extraCount, 0),
+      lines: new Set(effective.map((item) => item.lineNo)).size,
       missing: count('missing'),
       crack: count('crack'),
       blur: count('blur'),
       stoneFlower: count('stoneFlower'),
-      heavy: list.filter((loss) => loss.severity === 'heavy').length,
+      heavy: reps.filter((loss) => loss.severity === 'heavy').length,
     };
-  }, [losses, rubbingId]);
+  }, [effectiveMapByRubbing, rawList.length, rubbingId]);
 
   const gridLines = useMemo(() => {
-    const list = losses.filter((loss) => loss.rubbingId === rubbingId);
-    const grouped = groupByLine(list);
-    const cols = maxCharNo(list);
+    const grouped = groupByLine(rawList);
+    const cols = maxCharNo(rawList);
     const maxLine = grouped.reduce((max, item) => Math.max(max, item.lineNo), 0);
     return { grouped, cols, maxLine: Math.max(maxLine, 6) };
-  }, [losses, rubbingId]);
+  }, [rawList]);
 
   const selects: FilterSelectConfig[] = [
     { key: 'type', label: '损泐类型', options: LOSS_TYPE_OPTIONS.map((item) => ({ value: item.value, label: item.label })) },
@@ -180,10 +194,10 @@ export default function LossBoard() {
     setOpen(false);
   };
 
-  const cellLoss = (lineNo: number, charNo: number): Loss | undefined =>
-    losses.find((loss) => loss.rubbingId === rubbingId && loss.lineNo === lineNo && loss.charNo === charNo);
+  const cellEffective = (lineNo: number, charNo: number): EffectiveLoss | undefined =>
+    effectiveMapByRubbing.get(rubbingId)?.get(`${lineNo}:${charNo}`);
 
-  const columns: ColumnsType<Loss> = [
+  const columns: ColumnsType<EffectiveLoss> = [
     {
       title: '字位',
       key: 'coord',
@@ -192,22 +206,44 @@ export default function LossBoard() {
       render: (_value, record) => <Tag color="#2f3a34">{encodeCoord(record.lineNo, record.charNo)}</Tag>,
     },
     {
-      title: '损泐类型',
-      dataIndex: 'type',
-      width: 130,
-      render: (value: LossType, record) => <LossTag type={value} severity={record.severity} note={record.note} />,
+      title: '有效损泐',
+      key: 'type',
+      width: 180,
+      render: (_value, record) => {
+        const rep = record.representative;
+        return <LossTag type={rep.type} severity={rep.severity} note={rep.note} />;
+      },
     },
     { title: '行 / 字', key: 'line', width: 110, render: (_value, record) => `第 ${record.lineNo} 行 第 ${record.charNo} 字` },
     {
       title: '程度',
-      dataIndex: 'severity',
+      key: 'severity',
       width: 100,
-      render: (value: LossSeverity) => <Tag color={LOSS_SEVERITY_COLOR[value]}>{LOSS_SEVERITY_LABEL[value]}</Tag>,
+      render: (_value, record) => (
+        <Tag color={LOSS_SEVERITY_COLOR[record.representative.severity]}>
+          {LOSS_SEVERITY_LABEL[record.representative.severity]}
+        </Tag>
+      ),
     },
     {
-      title: '释文备注',
-      dataIndex: 'note',
-      render: (value: string) => <Typography.Text type="secondary">{value || '未填写'}</Typography.Text>,
+      title: '补标',
+      key: 'records',
+      width: 90,
+      render: (_value, record) =>
+        record.extraCount > 0 ? (
+          <Tooltip
+            title={record.sources
+              .map(
+                (source) =>
+                  `${LOSS_TYPE_LABEL[source.type]}·${LOSS_SEVERITY_LABEL[source.severity]}${source.note ? `　${source.note}` : ''}`,
+              )
+              .join('；')}
+          >
+            <Tag color="purple">共 {record.recordCount} 条（+{record.extraCount}）</Tag>
+          </Tooltip>
+        ) : (
+          <Typography.Text type="secondary">单条</Typography.Text>
+        ),
     },
     {
       title: '差异',
@@ -226,26 +262,85 @@ export default function LossBoard() {
       width: 150,
       render: (_value, record) => (
         <Space size={4}>
-          <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEdit(record)}>
-            编辑
+          <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEdit(record.representative)}>
+            编辑有效
           </Button>
-          <Popconfirm
-            title="删除该字位标注"
-            okText="确认"
-            cancelText="取消"
-            onConfirm={() =>
-              void dispatch(removeLoss(record.id))
-                .unwrap()
-                .then(() => dispatch(loadLosses()))
-                .then(() => message.success('已删除'))
-            }
-          >
-            <Button size="small" type="link" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
         </Space>
       ),
+    },
+  ];
+
+  const sourceColumns: ColumnsType<Loss> = [
+    {
+      title: '原始标注',
+      key: 'type',
+      width: 200,
+      render: (_value, record) => <LossTag type={record.type} severity={record.severity} note={record.note} size="small" />,
+    },
+    {
+      title: '程度',
+      dataIndex: 'severity',
+      width: 80,
+      render: (value: LossSeverity) => (
+        <Tag color={LOSS_SEVERITY_COLOR[value]}>{LOSS_SEVERITY_LABEL[value]}</Tag>
+      ),
+    },
+    {
+      title: '释文备注',
+      dataIndex: 'note',
+      render: (value: string) => <Typography.Text type="secondary">{value || '未填写'}</Typography.Text>,
+    },
+    {
+      title: '标注时间',
+      dataIndex: 'createdAt',
+      width: 160,
+      render: (value: number) => new Date(value).toLocaleString('zh-CN'),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 150,
+      render: (_value, record) => {
+        const group = rows.find(
+          (item) => item.lineNo === record.lineNo && item.charNo === record.charNo,
+        );
+        const isRepresentative = group?.representative.id === record.id;
+        return (
+          <Space size={4}>
+            <Button size="small" type="link" icon={<EditOutlined />} onClick={() => openEdit(record)}>
+              编辑
+            </Button>
+            <Popconfirm
+              title="撤掉该条原始标注"
+              description={
+                isRepresentative && (group?.extraCount ?? 0) > 0
+                  ? '撤掉代表条目后，该字位将自动改取其余条目中最重的一条。'
+                  : '撤掉后该字位有效损泐会即时重算。'
+              }
+              okText="确认"
+              cancelText="取消"
+              onConfirm={() =>
+                void dispatch(removeLoss(record.id))
+                  .unwrap()
+                  .then(() => dispatch(loadLosses()))
+                  .then(() => {
+                    setSelectedIds((keys) => keys.filter((key) => key !== record.id));
+                    message.success('已撤掉该条标注');
+                  })
+              }
+            >
+              <Button size="small" type="link" danger icon={<DeleteOutlined />}>
+                撤标
+              </Button>
+            </Popconfirm>
+            {isRepresentative ? (
+              <Tag color="gold" style={{ marginInlineEnd: 0 }}>
+                有效
+              </Tag>
+            ) : null}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -254,7 +349,7 @@ export default function LossBoard() {
       <div className="gb-page-head">
         <div>
           <h2>损泐字位标注台</h2>
-          <p>按行号字位网格逐格标注缺字、裂痕、漫漶与石花；选定基准拓本即可即时查看逐字差异。</p>
+          <p>按行号字位网格逐格标注缺字、裂痕、漫漶与石花；同一字位可分多次补标，比对与统计只取最重的一条，选定基准拓本即可即时查看逐字差异。</p>
         </div>
         <Space wrap>
           <Select
@@ -278,13 +373,15 @@ export default function LossBoard() {
       </div>
 
       <div className="gb-stat-row">
-        <StatBadge label="字位总数" value={stat.total} suffix="条" tone="primary" />
+        <StatBadge label="有效损泐字位" value={stat.total} suffix="字" tone="primary" />
+        <StatBadge label="原始标注" value={stat.rawTotal} suffix="条" tone="info" />
+        <StatBadge label="补标记录" value={stat.extraTotal} suffix="条" tone="warning" />
         <StatBadge label="涉及行数" value={stat.lines} suffix="行" tone="info" />
-        <StatBadge label="缺字" value={stat.missing} suffix="条" tone="danger" />
-        <StatBadge label="裂痕" value={stat.crack} suffix="条" tone="warning" />
-        <StatBadge label="漫漶" value={stat.blur} suffix="条" />
-        <StatBadge label="石花" value={stat.stoneFlower} suffix="条" tone="info" />
-        <StatBadge label="重度" value={stat.heavy} suffix="条" tone="danger" />
+        <StatBadge label="缺字" value={stat.missing} suffix="字" tone="danger" />
+        <StatBadge label="裂痕" value={stat.crack} suffix="字" tone="warning" />
+        <StatBadge label="漫漶" value={stat.blur} suffix="字" />
+        <StatBadge label="石花" value={stat.stoneFlower} suffix="字" tone="info" />
+        <StatBadge label="重度" value={stat.heavy} suffix="字" tone="danger" />
       </div>
 
       <FilterBar
@@ -319,7 +416,7 @@ export default function LossBoard() {
                   })
               }
             >
-              批量改程度（{selectedIds.length}）
+              批量改有效程度（{selectedIds.length}）
             </Button>
           </Space>
         }
@@ -368,29 +465,41 @@ export default function LossBoard() {
                 <div key={lineNo} className="gb-loss-grid__line">
                   <span className="gb-loss-grid__label">第{lineNo}行</span>
                   {Array.from({ length: gridLines.cols }, (_v, index) => index + 1).map((charNo) => {
-                    const loss = cellLoss(lineNo, charNo);
+                    const effective = cellEffective(lineNo, charNo);
+                    const rep = effective?.representative;
                     const isDiff = diffKeys.has(`${lineNo}:${charNo}`);
+                    const tooltip = rep
+                      ? `${encodeCoord(lineNo, charNo)}　${LOSS_TYPE_LABEL[rep.type]}·${LOSS_SEVERITY_LABEL[rep.severity]}` +
+                        (effective && effective.extraCount > 0
+                          ? `（有效；另有 ${effective.extraCount} 条补标，取最重）`
+                          : '') +
+                        (rep.note ? `　${rep.note}` : '')
+                      : `${encodeCoord(lineNo, charNo)}　未标注`;
                     return (
-                      <div
-                        key={charNo}
-                        className={`gb-loss-cell${loss ? ' is-marked' : ' is-empty'}${isDiff ? ' is-diff' : ''}`}
-                        style={loss ? { background: LOSS_TYPE_COLOR[loss.type] } : undefined}
-                        title={
-                          loss
-                            ? `${encodeCoord(lineNo, charNo)}　${LOSS_TYPE_LABEL[loss.type]}·${LOSS_SEVERITY_LABEL[loss.severity]}${loss.note ? `　${loss.note}` : ''}`
-                            : `${encodeCoord(lineNo, charNo)}　未标注`
-                        }
-                        onClick={() => (loss ? openEdit(loss) : openCreate(lineNo, charNo))}
-                      >
-                        {loss ? LOSS_TYPE_LABEL[loss.type].slice(0, 1) : charNo}
-                      </div>
+                      <Tooltip key={charNo} title={tooltip}>
+                        <div
+                          className={`gb-loss-cell${rep ? ' is-marked' : ' is-empty'}${isDiff ? ' is-diff' : ''}`}
+                          style={rep ? { background: LOSS_TYPE_COLOR[rep.type] } : undefined}
+                          onClick={() => (rep ? openEdit(rep) : openCreate(lineNo, charNo))}
+                        >
+                          {rep ? LOSS_TYPE_LABEL[rep.type].slice(0, 1) : charNo}
+                          {effective && effective.extraCount > 0 ? (
+                            <Badge
+                              count={`+${effective.extraCount}`}
+                              size="small"
+                              className="gb-loss-cell__badge"
+                              color="#7a3fb0"
+                            />
+                          ) : null}
+                        </div>
+                      </Tooltip>
                     );
                   })}
                 </div>
               ))}
             </div>
             <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
-              色块含义：{LOSS_TYPE_OPTIONS.map((item) => `${item.label}=${item.label.slice(0, 1)}`).join('　')}；虚线框为与基准拓本的差异字位。
+              色块含义：{LOSS_TYPE_OPTIONS.map((item) => `${item.label}=${item.label.slice(0, 1)}`).join('　')}；同字位多条补标只按最重的一条进比对统计，角标「+n」表示该字位另有 n 条；虚线框为与基准拓本的差异字位。
             </Typography.Text>
           </Card>
         </Col>
@@ -412,8 +521,8 @@ export default function LossBoard() {
                 size="small"
               />
             ) : (
-              <Table<Loss>
-                rowKey="id"
+              <Table<EffectiveLoss>
+                rowKey="key"
                 size="small"
                 pagination={{ pageSize: 10 }}
                 columns={columns}
@@ -421,6 +530,24 @@ export default function LossBoard() {
                 rowSelection={{
                   selectedRowKeys: selectedIds,
                   onChange: (keys) => setSelectedIds(keys.map((key) => String(key))),
+                }}
+                expandable={{
+                  expandedRowRender: (record) => (
+                    <div style={{ padding: '4px 0 4px 24px' }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        该字位原始标注 {record.recordCount} 条（补标 {record.extraCount} 条）；撤掉其中一条后，有效损泐按最重规则即时重算，已存比对记录的差异字数不受影响。
+                      </Typography.Text>
+                      <Table<Loss>
+                        rowKey="id"
+                        size="small"
+                        pagination={false}
+                        columns={sourceColumns}
+                        dataSource={record.sources}
+                        style={{ marginTop: 6 }}
+                      />
+                    </div>
+                  ),
+                  rowExpandable: (record) => record.extraCount > 0,
                 }}
               />
             )}

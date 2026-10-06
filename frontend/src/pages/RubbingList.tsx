@@ -72,7 +72,7 @@ import {
   type SealDraft,
   type SealType,
 } from '@/types/seal';
-import { selectLosses } from '@/stores/lossSlice';
+import { selectEffectiveLosses, selectLosses } from '@/stores/lossSlice';
 import LossTag from '@/components/common/LossTag';
 
 const FILTER_KEYS = ['method', 'state'] as const;
@@ -88,6 +88,7 @@ export default function RubbingList() {
   const filtered = useAppSelector(selectFilteredRubbings);
   const seals = useAppSelector(selectSeals);
   const losses = useAppSelector(selectLosses);
+  const effectiveLosses = useAppSelector(selectEffectiveLosses);
   const steleFilterId = useAppSelector((state) => state.rubbing.filters.steleId);
 
   const url = useFilterQuery(FILTER_KEYS);
@@ -125,9 +126,10 @@ export default function RubbingList() {
       catalogedPercent: total === 0 ? 0 : Math.round((cataloged / total) * 100),
       toCompare: rubbings.filter((rubbing) => rubbing.state === 'toCompare').length,
       seals: seals.length,
-      losses: losses.length,
+      losses: effectiveLosses.length,
+      rawLosses: losses.length,
     };
-  }, [losses.length, rubbings, seals.length]);
+  }, [effectiveLosses.length, losses.length, rubbings, seals.length]);
 
   const steleTitle = (steleId: string): string => steles.find((stele) => stele.id === steleId)?.title ?? steleId;
 
@@ -224,7 +226,7 @@ export default function RubbingList() {
       render: (_value, record) => (
         <Space direction="vertical" size={0}>
           <Typography.Text style={{ fontSize: 12 }}>
-            损泐 {losses.filter((loss) => loss.rubbingId === record.id).length} 条
+            有效损泐 {effectiveLosses.filter((item) => item.rubbingId === record.id).length} 字
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             钤印 {seals.filter((seal) => seal.rubbingId === record.id).length} 方
@@ -304,7 +306,8 @@ export default function RubbingList() {
         <StatBadge label="已编目占比" value={`${stat.catalogedPercent}%`} percent={stat.catalogedPercent} tone="success" />
         <StatBadge label="待比对" value={stat.toCompare} suffix="份" tone="warning" />
         <StatBadge label="钤印总数" value={stat.seals} suffix="方" tone="info" />
-        <StatBadge label="损泐字位" value={stat.losses} suffix="条" tone="danger" />
+        <StatBadge label="有效损泐字位" value={stat.losses} suffix="字" tone="danger" />
+        <StatBadge label="原始标注" value={stat.rawLosses} suffix="条" tone="warning" />
       </div>
 
       <FilterBar
@@ -555,15 +558,15 @@ export default function RubbingList() {
               该拓本损泐字位：
             </Typography.Text>
             <Space size={4} wrap style={{ marginTop: 4 }}>
-              {losses
-                .filter((loss) => loss.rubbingId === sealRubbing.id)
-                .map((loss) => (
+              {effectiveLosses
+                .filter((item) => item.rubbingId === sealRubbing.id)
+                .map((item) => (
                   <LossTag
-                    key={loss.id}
-                    type={loss.type}
-                    severity={loss.severity}
-                    lineNo={loss.lineNo}
-                    charNo={loss.charNo}
+                    key={item.key}
+                    type={item.representative.type}
+                    severity={item.representative.severity}
+                    lineNo={item.representative.lineNo}
+                    charNo={item.representative.charNo}
                     size="small"
                   />
                 ))}

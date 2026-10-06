@@ -21,8 +21,10 @@ export interface UseLossDiffResult {
   diffCount: number;
   /** 指定两个拓本做比对（供字位页按需调用） */
   diffOf: (rubbingIdA: string, rubbingIdB: string) => LossDiffResult;
-  /** 指定拓本的损泐条数 */
+  /** 指定拓本的有效损泐字数（同字位多条算一条） */
   lossCountOf: (rubbingId: string) => number;
+  /** 指定拓本的原始标注条数（含补标） */
+  rawLossCountOf: (rubbingId: string) => number;
 }
 
 export function useLossDiff(rubbingIdA?: string, rubbingIdB?: string): UseLossDiffResult {
@@ -48,6 +50,10 @@ export function useLossDiff(rubbingIdA?: string, rubbingIdB?: string): UseLossDi
         sameCount: 0,
         totalA: 0,
         totalB: 0,
+        rawTotalA: 0,
+        rawTotalB: 0,
+        extraTotalA: 0,
+        extraTotalB: 0,
       };
     }
     return diffOf(rubbingIdA, rubbingIdB);
@@ -57,6 +63,12 @@ export function useLossDiff(rubbingIdA?: string, rubbingIdB?: string): UseLossDi
   const sameRows = useMemo(() => result.rows.filter((row) => row.diffKind === 'same'), [result]);
 
   const lossCountOf = useCallback(
+    // 有效损泐字数：原始明细折叠后按字位计
+    (rubbingId: string): number => diffLosses(losses.filter((loss) => loss.rubbingId === rubbingId), []).totalA,
+    [losses],
+  );
+
+  const rawLossCountOf = useCallback(
     (rubbingId: string): number => losses.filter((loss) => loss.rubbingId === rubbingId).length,
     [losses],
   );
@@ -69,6 +81,7 @@ export function useLossDiff(rubbingIdA?: string, rubbingIdB?: string): UseLossDi
     diffCount: result.diffCount,
     diffOf,
     lossCountOf,
+    rawLossCountOf,
   };
 }
 

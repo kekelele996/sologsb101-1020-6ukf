@@ -305,6 +305,23 @@ body::before {
 .gb-loss-cell.is-marked {
   color: #fff;
   border-color: transparent;
+  position: relative;
+}
+
+.gb-loss-cell .gb-loss-cell__badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  z-index: 1;
+}
+
+.gb-loss-cell .gb-loss-cell__badge .ant-badge-count {
+  font-size: 10px;
+  line-height: 1;
+  padding: 0 4px;
+  height: 14px;
+  line-height: 14px;
+  box-shadow: 0 0 0 1px #fffdf7;
 }
 
 .gb-loss-cell.is-diff {

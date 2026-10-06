@@ -201,6 +201,8 @@ export async function seedDatabase(): Promise<void> {
 
   const losses: Loss[] = [
     { id: 'loss_010101', rubbingId: 'rub_0101', lineNo: 3, charNo: 7, type: 'blur', severity: 'light', note: '「壽」字右下漫漶', createdAt: now - day * 30, updatedAt: now - day * 30 },
+    // 同字位补标：L03C07 先记漫漶·轻，后补裂痕·轻；有效损泐仍取先标那条，网格出角标
+    { id: 'loss_010104', rubbingId: 'rub_0101', lineNo: 3, charNo: 7, type: 'crack', severity: 'light', note: '碑面细裂经「壽」字（补标）', createdAt: now - day * 26, updatedAt: now - day * 26 },
     { id: 'loss_010102', rubbingId: 'rub_0101', lineNo: 5, charNo: 2, type: 'stoneFlower', severity: 'medium', note: '石花漫及「年」字', createdAt: now - day * 30, updatedAt: now - day * 29 },
     { id: 'loss_010103', rubbingId: 'rub_0101', lineNo: 9, charNo: 11, type: 'missing', severity: 'heavy', note: '「禮」字缺末笔', createdAt: now - day * 28, updatedAt: now - day * 28 },
     { id: 'loss_010201', rubbingId: 'rub_0102', lineNo: 3, charNo: 7, type: 'blur', severity: 'medium', note: '晚拓，「壽」字已损', createdAt: now - day * 24, updatedAt: now - day * 24 },

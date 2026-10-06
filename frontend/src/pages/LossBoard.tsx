@@ -57,7 +57,7 @@ import {
   type LossSeverity,
   type LossType,
 } from '@/types/loss';
-import { encodeCoord, groupByLine, maxCharNo, sortLosses } from '@/utils/collate';
+import { effectiveLosses, encodeCoord, groupByLine, maxCharNo, sortLosses, type EffectiveLoss } from '@/utils/collate';
 
 const FILTER_KEYS = ['type', 'severity'] as const;
 
@@ -118,27 +118,38 @@ export default function LossBoard() {
     );
   }, [losses, rubbingId, url.keyword, url.values]);
 
+  /** 当前拓本的有效损泐：同字位多条补标算一条，类型程度取最重 */
+  const effectiveList = useMemo(
+    () => effectiveLosses(losses.filter((loss) => loss.rubbingId === rubbingId)),
+    [losses, rubbingId],
+  );
+
+  const effectiveByCoord = useMemo(() => {
+    const map = new Map<string, EffectiveLoss>();
+    effectiveList.forEach((loss) => map.set(`${loss.lineNo}:${loss.charNo}`, loss));
+    return map;
+  }, [effectiveList]);
+
   const stat = useMemo(() => {
-    const list = losses.filter((loss) => loss.rubbingId === rubbingId);
-    const count = (type: LossType): number => list.filter((loss) => loss.type === type).length;
+    const count = (type: LossType): number => effectiveList.filter((loss) => loss.type === type).length;
     return {
-      total: list.length,
-      lines: new Set(list.map((loss) => loss.lineNo)).size,
+      total: effectiveList.length,
+      entries: losses.filter((loss) => loss.rubbingId === rubbingId).length,
+      lines: new Set(effectiveList.map((loss) => loss.lineNo)).size,
       missing: count('missing'),
       crack: count('crack'),
       blur: count('blur'),
       stoneFlower: count('stoneFlower'),
-      heavy: list.filter((loss) => loss.severity === 'heavy').length,
+      heavy: effectiveList.filter((loss) => loss.severity === 'heavy').length,
     };
-  }, [losses, rubbingId]);
+  }, [effectiveList, losses, rubbingId]);
 
   const gridLines = useMemo(() => {
-    const list = losses.filter((loss) => loss.rubbingId === rubbingId);
-    const grouped = groupByLine(list);
-    const cols = maxCharNo(list);
+    const grouped = groupByLine(effectiveList);
+    const cols = maxCharNo(effectiveList);
     const maxLine = grouped.reduce((max, item) => Math.max(max, item.lineNo), 0);
     return { grouped, cols, maxLine: Math.max(maxLine, 6) };
-  }, [losses, rubbingId]);
+  }, [effectiveList]);
 
   const selects: FilterSelectConfig[] = [
     { key: 'type', label: '损泐类型', options: LOSS_TYPE_OPTIONS.map((item) => ({ value: item.value, label: item.label })) },
@@ -180,8 +191,21 @@ export default function LossBoard() {
     setOpen(false);
   };
 
-  const cellLoss = (lineNo: number, charNo: number): Loss | undefined =>
-    losses.find((loss) => loss.rubbingId === rubbingId && loss.lineNo === lineNo && loss.charNo === charNo);
+  const cellLoss = (lineNo: number, charNo: number): EffectiveLoss | undefined =>
+    effectiveByCoord.get(`${lineNo}:${charNo}`);
+
+  /** 网格单元格提示：有效值 + 同字位全部补标明细 */
+  const cellTitle = (loss: EffectiveLoss): string => {
+    const head = `${encodeCoord(loss.lineNo, loss.charNo)}　${LOSS_TYPE_LABEL[loss.type]}·${LOSS_SEVERITY_LABEL[loss.severity]}${loss.note ? `　${loss.note}` : ''}`;
+    if (loss.entryCount <= 1) return head;
+    const entries = loss.entries
+      .map(
+        (entry, index) =>
+          `${index + 1}. ${LOSS_TYPE_LABEL[entry.type]}·${LOSS_SEVERITY_LABEL[entry.severity]}${entry.note ? `　${entry.note}` : ''}`,
+      )
+      .join('\n');
+    return `${head}\n同字位共 ${loss.entryCount} 条补标，比对与统计取最重一条：\n${entries}`;
+  };
 
   const columns: ColumnsType<Loss> = [
     {
@@ -208,6 +232,22 @@ export default function LossBoard() {
       title: '释文备注',
       dataIndex: 'note',
       render: (value: string) => <Typography.Text type="secondary">{value || '未填写'}</Typography.Text>,
+    },
+    {
+      title: '有效损泐',
+      key: 'effective',
+      width: 96,
+      render: (_value, record) => {
+        const top = effectiveByCoord.get(`${record.lineNo}:${record.charNo}`);
+        if (!top) return null;
+        return top.id === record.id ? (
+          <Tag color="green">有效</Tag>
+        ) : (
+          <Tag title={`该字位共 ${top.entryCount} 条，比对取「${LOSS_TYPE_LABEL[top.type]}·${LOSS_SEVERITY_LABEL[top.severity]}」`}>
+            补标
+          </Tag>
+        );
+      },
     },
     {
       title: '差异',
@@ -278,13 +318,14 @@ export default function LossBoard() {
       </div>
 
       <div className="gb-stat-row">
-        <StatBadge label="字位总数" value={stat.total} suffix="条" tone="primary" />
+        <StatBadge label="有效字位" value={stat.total} suffix="个" tone="primary" />
+        <StatBadge label="标注明细" value={stat.entries} suffix="条" tone="info" />
         <StatBadge label="涉及行数" value={stat.lines} suffix="行" tone="info" />
-        <StatBadge label="缺字" value={stat.missing} suffix="条" tone="danger" />
-        <StatBadge label="裂痕" value={stat.crack} suffix="条" tone="warning" />
-        <StatBadge label="漫漶" value={stat.blur} suffix="条" />
-        <StatBadge label="石花" value={stat.stoneFlower} suffix="条" tone="info" />
-        <StatBadge label="重度" value={stat.heavy} suffix="条" tone="danger" />
+        <StatBadge label="缺字" value={stat.missing} suffix="个" tone="danger" />
+        <StatBadge label="裂痕" value={stat.crack} suffix="个" tone="warning" />
+        <StatBadge label="漫漶" value={stat.blur} suffix="个" />
+        <StatBadge label="石花" value={stat.stoneFlower} suffix="个" tone="info" />
+        <StatBadge label="重度" value={stat.heavy} suffix="个" tone="danger" />
       </div>
 
       <FilterBar
@@ -375,14 +416,13 @@ export default function LossBoard() {
                         key={charNo}
                         className={`gb-loss-cell${loss ? ' is-marked' : ' is-empty'}${isDiff ? ' is-diff' : ''}`}
                         style={loss ? { background: LOSS_TYPE_COLOR[loss.type] } : undefined}
-                        title={
-                          loss
-                            ? `${encodeCoord(lineNo, charNo)}　${LOSS_TYPE_LABEL[loss.type]}·${LOSS_SEVERITY_LABEL[loss.severity]}${loss.note ? `　${loss.note}` : ''}`
-                            : `${encodeCoord(lineNo, charNo)}　未标注`
-                        }
+                        title={loss ? cellTitle(loss) : `${encodeCoord(lineNo, charNo)}　未标注`}
                         onClick={() => (loss ? openEdit(loss) : openCreate(lineNo, charNo))}
                       >
                         {loss ? LOSS_TYPE_LABEL[loss.type].slice(0, 1) : charNo}
+                        {loss && loss.entryCount > 1 ? (
+                          <span className="gb-loss-cell__badge">{loss.entryCount}</span>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -390,7 +430,7 @@ export default function LossBoard() {
               ))}
             </div>
             <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
-              色块含义：{LOSS_TYPE_OPTIONS.map((item) => `${item.label}=${item.label.slice(0, 1)}`).join('　')}；虚线框为与基准拓本的差异字位。
+              色块含义：{LOSS_TYPE_OPTIONS.map((item) => `${item.label}=${item.label.slice(0, 1)}`).join('　')}；虚线框为与基准拓本的差异字位；右上角数字角标表示该字位另有多条补标，比对与统计只取最重一条。
             </Typography.Text>
           </Card>
         </Col>

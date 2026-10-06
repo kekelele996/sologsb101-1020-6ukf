@@ -5,7 +5,7 @@
 import { useCallback, useMemo } from 'react';
 import { useAppSelector } from '@/stores/store';
 import { selectLosses } from '@/stores/lossSlice';
-import { diffLosses, matchConclusion, type LossDiffResult, type LossDiffRow } from '@/utils/collate';
+import { diffLosses, effectiveLosses, matchConclusion, type LossDiffResult, type LossDiffRow } from '@/utils/collate';
 import type { CompareConclusion } from '@/types/compare';
 
 export interface UseLossDiffResult {
@@ -21,7 +21,7 @@ export interface UseLossDiffResult {
   diffCount: number;
   /** 指定两个拓本做比对（供字位页按需调用） */
   diffOf: (rubbingIdA: string, rubbingIdB: string) => LossDiffResult;
-  /** 指定拓本的损泐条数 */
+  /** 指定拓本的有效损泐字位数（同字位多条算一条） */
   lossCountOf: (rubbingId: string) => number;
 }
 
@@ -57,7 +57,7 @@ export function useLossDiff(rubbingIdA?: string, rubbingIdB?: string): UseLossDi
   const sameRows = useMemo(() => result.rows.filter((row) => row.diffKind === 'same'), [result]);
 
   const lossCountOf = useCallback(
-    (rubbingId: string): number => losses.filter((loss) => loss.rubbingId === rubbingId).length,
+    (rubbingId: string): number => effectiveLosses(losses.filter((loss) => loss.rubbingId === rubbingId)).length,
     [losses],
   );
 

@@ -58,6 +58,7 @@ import {
 } from '@/types/stele';
 import { COMPARE_CONCLUSION_LABEL } from '@/types/compare';
 import type { Seal } from '@/types/seal';
+import { effectiveLosses } from '@/utils/collate';
 
 const FILTER_KEYS = ['era', 'form'] as const;
 
@@ -105,7 +106,7 @@ export default function SteleList() {
     return {
       rubbings: steleRubbings.length,
       diff: steleCompares.reduce((sum, compare) => sum + compare.diffCount, 0),
-      loss: losses.filter((loss) => rubbingIds.includes(loss.rubbingId)).length,
+      loss: effectiveLosses(losses.filter((loss) => rubbingIds.includes(loss.rubbingId))).length,
       seal: sealTable.rows.filter((seal) => rubbingIds.includes(seal.rubbingId)).length,
       conclusion: lastCompare
         ? `${COMPARE_CONCLUSION_LABEL[lastCompare.conclusion]}（${lastCompare.date}）`
@@ -117,14 +118,14 @@ export default function SteleList() {
     () => ({
       steles: steles.length,
       rubbings: rubbings.length,
-      losses: losses.length,
+      losses: effectiveLosses(losses).length,
       diff: compares.reduce((sum, compare) => sum + compare.diffCount, 0),
       catalogedPercent:
         rubbings.length === 0
           ? 0
           : Math.round((rubbings.filter((rubbing) => rubbing.state === 'cataloged').length / rubbings.length) * 100),
     }),
-    [compares, losses.length, rubbings, steles.length],
+    [compares, losses, rubbings, steles.length],
   );
 
   const openCreate = (): void => {
@@ -189,7 +190,7 @@ export default function SteleList() {
       <div className="gb-stat-row">
         <StatBadge label="碑刻总数" value={totals.steles} suffix="处" tone="primary" />
         <StatBadge label="拓本总数" value={totals.rubbings} suffix="份" tone="info" />
-        <StatBadge label="损泐字位" value={totals.losses} suffix="条" tone="warning" />
+        <StatBadge label="损泐字位" value={totals.losses} suffix="个" tone="warning" />
         <StatBadge label="累计差异字数" value={totals.diff} suffix="字" tone="danger" />
         <StatBadge label="已编目占比" value={`${totals.catalogedPercent}%`} percent={totals.catalogedPercent} tone="success" />
       </div>
@@ -255,15 +256,18 @@ export default function SteleList() {
                       <Typography.Text type="secondary">所在地：{stele.location || '未记'}</Typography.Text>
                       <Typography.Text type="secondary">书者：{stele.calligrapher || '佚名'}</Typography.Text>
                       <Typography.Text>
-                        已收拓本 <strong>{stat.rubbings}</strong> 份 · 损泐字位 {stat.loss} 条
+                        已收拓本 <strong>{stat.rubbings}</strong> 份 · 损泐字位 {stat.loss} 个
                       </Typography.Text>
                       <Typography.Text>
                         版本差异 <strong>{stat.diff}</strong> 字 · 钤印 {stat.seal} 方
                       </Typography.Text>
                       <Typography.Text type="secondary">最近断代：{stat.conclusion}</Typography.Text>
                       <Space size={4} wrap>
-                        {losses
-                          .filter((loss) => rubbings.some((rubbing) => rubbing.id === loss.rubbingId && rubbing.steleId === stele.id))
+                        {effectiveLosses(
+                          losses.filter((loss) =>
+                            rubbings.some((rubbing) => rubbing.id === loss.rubbingId && rubbing.steleId === stele.id),
+                          ),
+                        )
                           .slice(0, 3)
                           .map((loss) => (
                             <LossTag

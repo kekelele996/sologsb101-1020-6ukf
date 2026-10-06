@@ -19,6 +19,7 @@ import { selectSteles } from './stores/steleSlice';
 import { selectRubbings } from './stores/rubbingSlice';
 import { selectLosses } from './stores/lossSlice';
 import { initDatabase } from './utils/db';
+import { effectiveLosses } from './utils/collate';
 import { STELE_FORM_LABEL } from './types/stele';
 
 const { Header, Sider, Content, Footer } = Layout;
@@ -52,6 +53,7 @@ export default function App() {
   }, [dispatch, message]);
 
   const currentStele = steles.find((stele) => stele.id === currentSteleId) ?? null;
+  const effectiveLossCount = effectiveLosses(losses).length;
   const selectedKey = location.pathname.startsWith('/rubbings')
     ? ROUTES.rubbings
     : location.pathname.startsWith('/losses')
@@ -93,7 +95,7 @@ export default function App() {
               <FileSearchOutlined /> 碑刻 {steles.length} 处
             </span>
             <span>拓本 {rubbings.length} 份</span>
-            <span>损泐字位 {losses.length} 条</span>
+            <span>损泐字位 {effectiveLossCount} 个</span>
           </Space>
         </div>
       </Sider>
@@ -126,7 +128,7 @@ export default function App() {
             <Button size="small" onClick={() => navigate(ROUTES.rubbings)}>
               进入拓本登记
             </Button>
-            <Badge count={losses.length} showZero color="#a8623a" title="损泐字位总数" />
+            <Badge count={effectiveLossCount} showZero color="#a8623a" title="有效损泐字位总数" />
           </Space>
         </Header>
 

@@ -50,14 +50,55 @@ export function coordKey(loss: Pick<Loss, 'lineNo' | 'charNo'>): string {
   return `${loss.lineNo}:${loss.charNo}`;
 }
 
+/**
+ * 有效损泐：同一字位上的多条补标合并为一条，参与比对与统计。
+ * 类型与程度取最重的一条；原始明细保留在 entries 中，不改动、不写回。
+ */
+export interface EffectiveLoss extends Loss {
+  /** 该字位的原始标注条数（≥1） */
+  entryCount: number;
+  /** 该字位全部原始标注，按取舍顺序排列（首条即有效值来源） */
+  entries: Loss[];
+}
+
+/** 同字位多条的取舍顺序：程度权重降序 → 标注时间升序（并列取先标的那条）→ id，保证结果稳定 */
+function compareEntries(a: Loss, b: Loss): number {
+  const bySeverity = severityWeight(b.severity) - severityWeight(a.severity);
+  if (bySeverity !== 0) return bySeverity;
+  if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * 把同一拓本同一字位的多条补标合并为一条有效损泐（类型程度取最重）。
+ * 原始明细不动；撤掉其中一条后重新调用即得到新的有效值。
+ */
+export function effectiveLosses(losses: Loss[]): EffectiveLoss[] {
+  const groups = new Map<string, Loss[]>();
+  losses.forEach((loss) => {
+    const key = `${loss.rubbingId}|${coordKey(loss)}`;
+    groups.set(key, [...(groups.get(key) ?? []), loss]);
+  });
+  const merged: EffectiveLoss[] = [];
+  groups.forEach((list) => {
+    const entries = [...list].sort(compareEntries);
+    const top = entries[0] as Loss;
+    merged.push({ ...top, entryCount: entries.length, entries });
+  });
+  return merged.sort((a, b) => (a.lineNo === b.lineNo ? a.charNo - b.charNo : a.lineNo - b.lineNo));
+}
+
 export interface LossDiffRow {
   key: string;
   lineNo: number;
   charNo: number;
-  /** A 拓本在该字位的损泐（可能为多条，取最重） */
-  lossA: Loss | null;
-  /** B 拓本在该字位的损泐 */
-  lossB: Loss | null;
+  /** A 拓本在该字位的有效损泐（多条补标已取最重） */
+  lossA: EffectiveLoss | null;
+  /** B 拓本在该字位的有效损泐 */
+  lossB: EffectiveLoss | null;
+  /** A/B 在该字位的原始标注条数（0 表示该方未标注） */
+  countA: number;
+  countB: number;
   /** 差异类型：仅 A / 仅 B / 程度不同 / 一致 */
   diffKind: 'onlyA' | 'onlyB' | 'severity' | 'same';
   severityDelta: number;
@@ -71,32 +112,21 @@ export interface LossDiffResult {
   onlyBCount: number;
   severityDiffCount: number;
   sameCount: number;
-  /** 涉及的拓本损泐总条数 */
+  /** 涉及的拓本有效损泐字位数（同字位多条算一条） */
   totalA: number;
   totalB: number;
 }
 
-/** 取同一字位上最严重的损泐记录 */
-function heaviest(list: Loss[]): Loss | null {
-  if (list.length === 0) return null;
-  return [...list].sort((a, b) => severityWeight(b.severity) - severityWeight(a.severity))[0] ?? null;
-}
-
 /**
  * 按字位坐标比对两个拓本的损泐集合，输出差异清单与差异计数。
+ * 同一字位多条补标先合并为一条有效损泐（取最重）再比对；
  * 差异定义：一方有损泐另一方没有，或双方损泐严重程度不同。
  */
 export function diffLosses(lossesA: Loss[], lossesB: Loss[]): LossDiffResult {
-  const mapA = new Map<string, Loss[]>();
-  const mapB = new Map<string, Loss[]>();
-  lossesA.forEach((loss) => {
-    const key = coordKey(loss);
-    mapA.set(key, [...(mapA.get(key) ?? []), loss]);
-  });
-  lossesB.forEach((loss) => {
-    const key = coordKey(loss);
-    mapB.set(key, [...(mapB.get(key) ?? []), loss]);
-  });
+  const effA = effectiveLosses(lossesA);
+  const effB = effectiveLosses(lossesB);
+  const mapA = new Map(effA.map((loss) => [coordKey(loss), loss]));
+  const mapB = new Map(effB.map((loss) => [coordKey(loss), loss]));
 
   const keys = Array.from(new Set([...mapA.keys(), ...mapB.keys()])).sort((a, b) => {
     const [la, ca] = a.split(':').map((item) => Number.parseInt(item, 10));
@@ -107,8 +137,8 @@ export function diffLosses(lossesA: Loss[], lossesB: Loss[]): LossDiffResult {
 
   const rows: LossDiffRow[] = keys.map((key) => {
     const [lineNo, charNo] = key.split(':').map((item) => Number.parseInt(item, 10)) as [number, number];
-    const lossA = heaviest(mapA.get(key) ?? []);
-    const lossB = heaviest(mapB.get(key) ?? []);
+    const lossA = mapA.get(key) ?? null;
+    const lossB = mapB.get(key) ?? null;
     const weightA = lossA ? severityWeight(lossA.severity) : 0;
     const weightB = lossB ? severityWeight(lossB.severity) : 0;
     const severityDelta = weightA - weightB;
@@ -116,7 +146,17 @@ export function diffLosses(lossesA: Loss[], lossesB: Loss[]): LossDiffResult {
     if (lossA && !lossB) diffKind = 'onlyA';
     else if (!lossA && lossB) diffKind = 'onlyB';
     else if (severityDelta !== 0) diffKind = 'severity';
-    return { key, lineNo, charNo, lossA, lossB, diffKind, severityDelta };
+    return {
+      key,
+      lineNo,
+      charNo,
+      lossA,
+      lossB,
+      countA: lossA?.entryCount ?? 0,
+      countB: lossB?.entryCount ?? 0,
+      diffKind,
+      severityDelta,
+    };
   });
 
   const onlyACount = rows.filter((row) => row.diffKind === 'onlyA').length;
@@ -130,8 +170,8 @@ export function diffLosses(lossesA: Loss[], lossesB: Loss[]): LossDiffResult {
     onlyBCount,
     severityDiffCount,
     sameCount: rows.filter((row) => row.diffKind === 'same').length,
-    totalA: lossesA.length,
-    totalB: lossesB.length,
+    totalA: effA.length,
+    totalB: effB.length,
   };
 }
 

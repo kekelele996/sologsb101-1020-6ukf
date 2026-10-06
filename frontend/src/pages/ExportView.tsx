@@ -37,6 +37,7 @@ import { selectCompares, selectLosses } from '@/stores/lossSlice';
 import { SEAL_TYPE_COLOR, SEAL_TYPE_LABEL, sealPositionWeight, type Seal, type SealType } from '@/types/seal';
 import { RUBBING_METHOD_LABEL, RUBBING_STATE_LABEL } from '@/types/rubbing';
 import { COMPARE_CONCLUSION_COLOR, COMPARE_CONCLUSION_LABEL } from '@/types/compare';
+import { effectiveLosses } from '@/utils/collate';
 import {
   DB_NAME,
   DB_SCHEMA_VERSION,
@@ -105,7 +106,7 @@ export default function ExportView() {
     () => ({
       steles: steles.length,
       rubbings: rubbings.length,
-      losses: losses.length,
+      losses: effectiveLosses(losses).length,
       seals: sealTable.rows.length,
       compares: compares.length,
       passPercent:
@@ -113,7 +114,7 @@ export default function ExportView() {
           ? 0
           : Math.round((compares.filter((compare) => compare.conclusion !== 'pending').length / compares.length) * 100),
     }),
-    [compares, losses.length, rubbings.length, sealTable.rows.length, steles.length],
+    [compares, losses, rubbings.length, sealTable.rows.length, steles.length],
   );
 
   const handleExport = async (): Promise<void> => {
@@ -237,7 +238,7 @@ export default function ExportView() {
       <div className="gb-stat-row">
         <StatBadge label="碑刻" value={stat.steles} suffix="处" tone="primary" />
         <StatBadge label="拓本" value={stat.rubbings} suffix="份" tone="info" />
-        <StatBadge label="损泐字位" value={stat.losses} suffix="条" tone="warning" />
+        <StatBadge label="损泐字位" value={stat.losses} suffix="个" tone="warning" />
         <StatBadge label="钤印" value={stat.seals} suffix="方" />
         <StatBadge label="比对记录" value={stat.compares} suffix="条" tone="danger" />
         <StatBadge label="已定断代占比" value={`${stat.passPercent}%`} percent={stat.passPercent} tone="success" />
@@ -391,8 +392,7 @@ export default function ExportView() {
                       <Tag>{RUBBING_METHOD_LABEL[rubbing.method]}</Tag>
                       <Tag color="gold">{RUBBING_STATE_LABEL[rubbing.state]}</Tag>
                       <Space size={4} wrap>
-                        {losses
-                          .filter((loss) => loss.rubbingId === rubbing.id)
+                        {effectiveLosses(losses.filter((loss) => loss.rubbingId === rubbing.id))
                           .slice(0, 2)
                           .map((loss) => (
                             <LossTag

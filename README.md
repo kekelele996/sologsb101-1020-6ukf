@@ -83,11 +83,13 @@ npm run preview    # 本地预览构建产物（http://localhost:22820）
 | --- | --- | --- | --- |
 | Stele 碑刻 | `src/types/stele.ts` | `id` `title` `era` `location` `form`（碑/碣/摩崖/墓志） `sizeCm` `calligrapher` | 新建后进入拓本登记，卡片回显拓本数与差异条数 |
 | Rubbing 拓本 | `src/types/rubbing.ts` | `id` `steleId` `versionNo` `method`（擦拓/扑拓/蝉翼拓） `paperType` `inkTone`（浓墨/淡墨） `sizeCm` `collectionNo` `dateGuess` `state`（待编目/已编目/待比对） | 同碑多份并存，版本序号自动生成 |
-| Loss 损泐字位 | `src/types/loss.ts` | `id` `rubbingId` `lineNo` `charNo` `type`（缺字/裂痕/漫漶/石花） `severity`（轻/中/重） `note` | 按行列网格标注，同碑同字位自动并排对比 |
+| Loss 损泐字位 | `src/types/loss.ts` | `id` `rubbingId` `lineNo` `charNo` `type`（缺字/裂痕/漫漶/石花） `severity`（轻/中/重） `note` | 按行列网格标注，同字位可多次补标，明细全部保留 |
 | Seal 钤印 | `src/types/seal.ts` | `id` `rubbingId` `sealText` `position` `transcription` `sealType`（收藏印/鉴赏印/作者印） | 按位置排序展示，支持批量改印别 |
 | Compare 版本比对 | `src/types/compare.ts` | `id` `steleId` `rubbingIdA` `rubbingIdB` `diffCount` `conclusion`（早本/晚本/同版/待考） `operator` `date` | 选定两拓本即生成差异清单并回写断代结论 |
 
 数据结构版本号 `DB_SCHEMA_VERSION` 定义在 `src/utils/db.ts`，当前为 `v2`：`losses` 表增加 `charNo` 与 `[rubbingId+lineNo+charNo]` 复合索引，并在 Dexie `.upgrade()` 中按行号顺序为历史字位记录重建 `charNo`。
+
+**有效损泐口径**：同一字位上的多条补标（如先记裂痕·轻、后补漫漶·中）在比对与统计中算**一条有效损泐**，类型与程度取最重的一条（程度并列时取先标的那条）。原始明细不合并、不写回，有效值由 `utils/collate.ts` 的 `effectiveLosses()` 在读取侧实时派生——撤掉其中一条后有效值自动重算；已保存比对记录中的差异字数是落库字段，不随标注变动回改。网格在有多条补标的字位上显示数字角标，明细表以「有效 / 补标」标出当前进入比对的那条；编目卡与损泐台账 CSV 均按有效字位输出，并注明同字位补标条数。
 
 ---
 
@@ -117,7 +119,7 @@ sologsb101-1020/
 └── README.md
 ```
 
-分层约定：页面通过 `useSelector` / `dispatch` 读写 Redux，跨页状态不留在组件内部 `useState`；IndexedDB 读写由 slice 的 `createAsyncThunk` 统一封装，页面级只读订阅（如钤印明细）走 `useIdbTable()` 的 `liveQuery`；字位坐标编解码与差异算法集中在 `utils/collate.ts`，比对派生逻辑走 `useLossDiff()`。
+分层约定：页面通过 `useSelector` / `dispatch` 读写 Redux，跨页状态不留在组件内部 `useState`；IndexedDB 读写由 slice 的 `createAsyncThunk` 统一封装，页面级只读订阅（如钤印明细）走 `useIdbTable()` 的 `liveQuery`；字位坐标编解码、有效损泐合并（`effectiveLosses`）与差异算法集中在 `utils/collate.ts`，比对派生逻辑走 `useLossDiff()`。
 
 ---
 

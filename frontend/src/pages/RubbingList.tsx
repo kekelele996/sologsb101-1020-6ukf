@@ -74,6 +74,7 @@ import {
 } from '@/types/seal';
 import { selectLosses } from '@/stores/lossSlice';
 import LossTag from '@/components/common/LossTag';
+import { effectiveLosses } from '@/utils/collate';
 
 const FILTER_KEYS = ['method', 'state'] as const;
 
@@ -125,9 +126,9 @@ export default function RubbingList() {
       catalogedPercent: total === 0 ? 0 : Math.round((cataloged / total) * 100),
       toCompare: rubbings.filter((rubbing) => rubbing.state === 'toCompare').length,
       seals: seals.length,
-      losses: losses.length,
+      losses: effectiveLosses(losses).length,
     };
-  }, [losses.length, rubbings, seals.length]);
+  }, [losses, rubbings, seals.length]);
 
   const steleTitle = (steleId: string): string => steles.find((stele) => stele.id === steleId)?.title ?? steleId;
 
@@ -224,7 +225,7 @@ export default function RubbingList() {
       render: (_value, record) => (
         <Space direction="vertical" size={0}>
           <Typography.Text style={{ fontSize: 12 }}>
-            损泐 {losses.filter((loss) => loss.rubbingId === record.id).length} 条
+            损泐字位 {effectiveLosses(losses.filter((loss) => loss.rubbingId === record.id)).length} 个
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             钤印 {seals.filter((seal) => seal.rubbingId === record.id).length} 方
@@ -304,7 +305,7 @@ export default function RubbingList() {
         <StatBadge label="已编目占比" value={`${stat.catalogedPercent}%`} percent={stat.catalogedPercent} tone="success" />
         <StatBadge label="待比对" value={stat.toCompare} suffix="份" tone="warning" />
         <StatBadge label="钤印总数" value={stat.seals} suffix="方" tone="info" />
-        <StatBadge label="损泐字位" value={stat.losses} suffix="条" tone="danger" />
+        <StatBadge label="损泐字位" value={stat.losses} suffix="个" tone="danger" />
       </div>
 
       <FilterBar

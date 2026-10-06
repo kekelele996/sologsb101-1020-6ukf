@@ -6,7 +6,7 @@ import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/tool
 import { createId, db } from '@/utils/db';
 import type { Loss, LossDraft, LossSeverity, LossType } from '@/types/loss';
 import type { Compare, CompareDraft } from '@/types/compare';
-import { sortLosses } from '@/utils/collate';
+import { effectiveLosses, sortLosses } from '@/utils/collate';
 import type { RootState } from './store';
 
 export interface LossFilters {
@@ -170,10 +170,10 @@ export function selectFilteredLosses(state: RootState): Loss[] {
   });
 }
 
-/** 某拓本在某碑刻下的损泐条数统计 */
+/** 某拓本在某碑刻下的有效损泐字位数统计（同字位多条补标算一条） */
 export function selectLossCountByRubbing(state: RootState): Record<string, number> {
   const result: Record<string, number> = {};
-  state.loss.items.forEach((loss) => {
+  effectiveLosses(state.loss.items).forEach((loss) => {
     result[loss.rubbingId] = (result[loss.rubbingId] ?? 0) + 1;
   });
   return result;

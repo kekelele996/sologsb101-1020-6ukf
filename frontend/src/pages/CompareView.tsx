@@ -303,7 +303,7 @@ export default function CompareView() {
             />
           </Space>
           <Typography.Text type="secondary">
-            A 损泐 {diff.result.totalA} 条 · B 损泐 {diff.result.totalB} 条
+            A 有效字位 {diff.result.totalA} 个（标注 {lossesOfA.length} 条） · B 有效字位 {diff.result.totalB} 个（标注 {lossesOfB.length} 条）
           </Typography.Text>
           <Button
             size="small"
@@ -349,6 +349,7 @@ export default function CompareView() {
                       <Space size={6} wrap>
                         <Tag color="#2f3a34">{encodeCoord(row.lineNo, row.charNo)}</Tag>
                         <span>A（第 {rubbingA?.versionNo ?? '?'} 版）</span>
+                        {row.countA > 1 ? <Tag color="orange">同字位共 {row.countA} 条，取最重</Tag> : null}
                       </Space>
                       <div style={{ marginTop: 6 }}>
                         {row.lossA ? (
@@ -362,6 +363,7 @@ export default function CompareView() {
                       <Space size={6} wrap>
                         <Tag color="#a8623a">{encodeCoord(row.lineNo, row.charNo)}</Tag>
                         <span>B（第 {rubbingB?.versionNo ?? '?'} 版）</span>
+                        {row.countB > 1 ? <Tag color="orange">同字位共 {row.countB} 条，取最重</Tag> : null}
                       </Space>
                       <div style={{ marginTop: 6 }}>
                         {row.lossB ? (

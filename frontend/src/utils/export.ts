@@ -12,7 +12,7 @@ import { INK_TONE_LABEL, RUBBING_METHOD_LABEL, RUBBING_STATE_LABEL } from '@/typ
 import { LOSS_SEVERITY_LABEL, LOSS_TYPE_LABEL } from '@/types/loss';
 import { SEAL_TYPE_LABEL, sealPositionWeight } from '@/types/seal';
 import { COMPARE_CONCLUSION_LABEL } from '@/types/compare';
-import { diffLosses, encodeCoord, sortLosses } from './collate';
+import { diffLosses, effectiveLosses, encodeCoord } from './collate';
 import type { RubbingSnapshot } from './db';
 
 export function download(filename: string, content: string, mime: string): void {
@@ -52,28 +52,36 @@ export function buildCatalogCard(
   seals: Seal[],
   compares: Compare[],
 ): string {
+  // 损泐统计按有效字位口径：同字位多条补标算一条，类型程度取最重；明细条数并列展示
+  const rubbingIds = new Set(rubbings.map((rubbing) => rubbing.id));
+  const steleLosses = losses.filter((loss) => rubbingIds.has(loss.rubbingId));
+  const steleEffective = effectiveLosses(steleLosses);
+  const steleSeals = seals.filter((seal) => rubbingIds.has(seal.rubbingId));
   const lines: string[] = [];
   lines.push(`【碑帖编目卡】${stele.title}`);
   lines.push(`年代：${stele.era || '待考'}　形制：${STELE_FORM_LABEL[stele.form]}　尺寸：${stele.sizeCm || '未测'}`);
   lines.push(`所在地：${stele.location || '未记'}　书者：${stele.calligrapher || '佚名'}`);
-  lines.push(`拓本数：${rubbings.length}　损泐字位：${losses.length} 条　钤印：${seals.length} 方`);
+  lines.push(
+    `拓本数：${rubbings.length}　损泐字位：${steleEffective.length} 个（标注明细 ${steleLosses.length} 条）　钤印：${steleSeals.length} 方`,
+  );
   lines.push('');
 
   [...rubbings]
     .sort((a, b) => a.versionNo - b.versionNo)
     .forEach((rubbing) => {
-      const rubbingLosses = sortLosses(losses.filter((loss) => loss.rubbingId === rubbing.id));
+      const rubbingLosses = effectiveLosses(losses.filter((loss) => loss.rubbingId === rubbing.id));
       const rubbingSeals = seals
         .filter((seal) => seal.rubbingId === rubbing.id)
         .sort((a, b) => sealPositionWeight(a.position) - sealPositionWeight(b.position));
       lines.push(
         `第 ${rubbing.versionNo} 版　${RUBBING_METHOD_LABEL[rubbing.method]}　${INK_TONE_LABEL[rubbing.inkTone]}　${rubbing.paperType}　${rubbing.sizeCm || '尺寸未记'}　收藏号 ${rubbing.collectionNo || '未编'}　${rubbing.dateGuess || '年代待考'}　${RUBBING_STATE_LABEL[rubbing.state]}`,
       );
-      lines.push(`　损泐字位（${rubbingLosses.length} 条）：`);
+      lines.push(`　损泐字位（${rubbingLosses.length} 个）：`);
       if (rubbingLosses.length === 0) lines.push('　　无');
       rubbingLosses.forEach((loss) => {
+        const extra = loss.entryCount > 1 ? `　（同字位补标 ${loss.entryCount} 条，取最重）` : '';
         lines.push(
-          `　　${encodeCoord(loss.lineNo, loss.charNo)}　${LOSS_TYPE_LABEL[loss.type]}·${LOSS_SEVERITY_LABEL[loss.severity]}　${loss.note || ''}`,
+          `　　${encodeCoord(loss.lineNo, loss.charNo)}　${LOSS_TYPE_LABEL[loss.type]}·${LOSS_SEVERITY_LABEL[loss.severity]}　${loss.note || ''}${extra}`,
         );
       });
       lines.push(`　钤印（${rubbingSeals.length} 方）：`);
@@ -136,16 +144,16 @@ export function buildAllCatalogCards(context: ExportContext): string {
     .join('\n\n————————————————\n\n');
 }
 
-/** 损泐台账 CSV（碑刻 / 拓本 / 字位 / 类型 / 程度） */
+/** 损泐台账 CSV（碑刻 / 拓本 / 字位 / 类型 / 程度）；按有效损泐口径，一有效字位一行 */
 export function exportLossLedgerCsv(context: ExportContext): string {
-  const header = ['碑名', '拓本版本', '拓法', '行号', '字位', '坐标', '损泐类型', '严重程度', '释文备注'];
+  const header = ['碑名', '拓本版本', '拓法', '行号', '字位', '坐标', '损泐类型', '严重程度', '同字位条数', '释文备注'];
   const lines: string[] = [header.map(csvCell).join(',')];
   context.steles.forEach((stele) => {
     const rubbings = context.rubbings
       .filter((rubbing) => rubbing.steleId === stele.id)
       .sort((a, b) => a.versionNo - b.versionNo);
     rubbings.forEach((rubbing) => {
-      sortLosses(context.losses.filter((loss) => loss.rubbingId === rubbing.id)).forEach((loss) => {
+      effectiveLosses(context.losses.filter((loss) => loss.rubbingId === rubbing.id)).forEach((loss) => {
         lines.push(
           [
             stele.title,
@@ -156,6 +164,7 @@ export function exportLossLedgerCsv(context: ExportContext): string {
             encodeCoord(loss.lineNo, loss.charNo),
             LOSS_TYPE_LABEL[loss.type],
             LOSS_SEVERITY_LABEL[loss.severity],
+            loss.entryCount,
             loss.note,
           ]
             .map(csvCell)
